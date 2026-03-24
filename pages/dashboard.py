@@ -8,6 +8,13 @@ from db import (
 from utils.calculations import compute_savings_plan, check_alert_thresholds, format_currency
 
 
+def parse_amount(val: str) -> float:
+    try:
+        return float(str(val).replace(",", "").replace(" ", ""))
+    except Exception:
+        return 0.0
+
+
 def render():
     profile = get_profile()
     if not profile:
@@ -23,11 +30,11 @@ def render():
     spending = get_spending_by_category()
     plan = compute_savings_plan(income, goals, spending)
 
-    # ── Header ───────────────────────────────────────────────
+    # ── Header ───────────────────────────────────────────────────
     st.markdown(f"## 👋 Hey {name}")
     st.caption(f"{datetime.now().strftime('%B %Y')} · {currency} budget overview")
 
-    # ── Active alerts banner ─────────────────────────────────
+    # ── Active alerts banner ──────────────────────────────────────
     active_alerts = get_active_alerts()
     if active_alerts:
         for alert in active_alerts:
@@ -35,7 +42,7 @@ def render():
 
     st.divider()
 
-    # ── Top metrics ──────────────────────────────────────────
+    # ── Top metrics ───────────────────────────────────────────────
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Monthly income", fmt(income))
     m2.metric("Total budgeted", fmt(plan["total_budgeted"]))
@@ -53,7 +60,7 @@ def render():
 
     st.divider()
 
-    # ── Budget vs expense per category ──────────────────────
+    # ── Budget vs expense per category ────────────────────────────
     st.markdown("### 📊 Budget vs spending")
 
     if not spending:
@@ -67,28 +74,22 @@ def render():
 
             col1, col2 = st.columns([3, 1])
             with col1:
-                label = f"{cat['icon']} **{cat['name']}** — {fmt(spent)} / {fmt(limit)}"
-                st.markdown(label)
-                bar_color = "red" if over else ("orange" if pct >= 80 else "green")
-                # Streamlit progress doesn't support color natively — use custom HTML
+                st.markdown(f"{cat['icon']} **{cat['name']}** — {fmt(spent)} / {fmt(limit)}")
                 st.markdown(
-                    f"""
-                    <div style="background:#e0e0e0;border-radius:6px;height:10px;margin-bottom:12px">
+                    f"""<div style="background:#e0e0e0;border-radius:6px;height:10px;margin-bottom:12px">
                         <div style="width:{pct:.0f}%;background:{'#d62728' if over else ('#ff7f0e' if pct>=80 else '#2ca02c')};
-                            height:10px;border-radius:6px;transition:width 0.3s"></div>
-                    </div>
-                    """,
+                        height:10px;border-radius:6px"></div></div>""",
                     unsafe_allow_html=True,
                 )
             with col2:
                 if over:
-                    st.error(f"Over by {fmt(spent - limit)}")
+                    st.error(f"Over {fmt(spent - limit)}")
                 else:
                     st.caption(f"{fmt(limit - spent)} left")
 
     st.divider()
 
-    # ── Savings goals progress ──────────────────────────────
+    # ── Savings goals ─────────────────────────────────────────────
     st.markdown("### 🎯 Goals progress")
     if not plan["goal_allocations"]:
         st.info("No goals set yet.")
@@ -97,57 +98,62 @@ def render():
             c1, c2, c3 = st.columns([3, 1, 1])
             c1.markdown(f"**{g['name']}** — target {fmt(g['target'])} in {g['months_left']} months")
             c2.metric("Need / month", fmt(g["monthly_needed"]))
-            if g["on_track"]:
-                c3.success("On track ✓")
-            else:
-                c3.warning("Tight ⚠️")
+            c3.success("On track ✓") if g["on_track"] else c3.warning("Tight ⚠️")
 
         surplus = plan["surplus_after_goals"]
         if surplus >= 0:
             st.success(f"✅ After goals, you have **{fmt(surplus)}/month** to spare.")
         else:
-            st.error(f"⚠️ You're **{fmt(abs(surplus))}/month short** of all goals. Consider adjusting timelines or limits.")
+            st.error(f"⚠️ You're **{fmt(abs(surplus))}/month short** of all goals.")
 
     st.divider()
 
-    # ── Log a new expense ────────────────────────────────────
+    # ── Log a new expense ─────────────────────────────────────────
     st.markdown("### ➕ Log an expense")
 
     categories = get_categories()
     if not categories:
-        st.info("No categories yet.")
+        st.info("No categories set up yet.")
         return
 
     cat_map = {c["name"]: c for c in categories}
 
-    with st.form("log_expense", clear_on_submit=True):
-        fc1, fc2 = st.columns(2)
-        cat_name = fc1.selectbox("Category", list(cat_map.keys()))
-        amount = fc2.number_input("Amount", min_value=0.01, step=10.0)
-        note = st.text_input("Note (optional)", placeholder="e.g. Lunch at office")
-        submitted = st.form_submit_button("Log expense", type="primary", use_container_width=True)
+    fc1, fc2 = st.columns(2)
+    cat_name = fc1.selectbox("Category", list(cat_map.keys()), key="exp_cat")
+    amount_str = fc2.text_input("Amount", placeholder="e.g. 1,500", key="exp_amount")
+    note = st.text_input("Note (optional)", placeholder="e.g. Lunch at office", key="exp_note")
 
-    if submitted and amount > 0:
-        cat = cat_map[cat_name]
-        add_expense(cat["id"], amount, note)
+    amount = parse_amount(amount_str)
+    if amount_str and amount > 0:
+        st.caption(f"✓ Amount: {fmt(amount)}")
+    elif amount_str:
+        st.warning("Enter a valid number (commas are fine).")
 
-        # Re-check thresholds and create alert if needed
-        updated_spending = get_spending_by_category()
-        alerts = check_alert_thresholds(updated_spending)
-        for a in alerts:
-            if a["category_id"] == cat["id"]:
-                msg = (
-                    f"You've spent {fmt(a['spent'])} of your {fmt(a['limit'])} {a['category_name']} budget "
-                    f"({a['pct']:.0f}%)." + (" **Over budget!**" if a["over"] else " Getting close.")
-                )
-                create_alert(a["category_id"], msg)
+    if st.button("Log expense", type="primary", use_container_width=True, key="log_btn"):
+        if amount <= 0:
+            st.error("Please enter a valid amount greater than 0.")
+        else:
+            cat = cat_map[cat_name]
+            add_expense(cat["id"], amount, note)
 
-        st.success(f"✓ Logged {fmt(amount)} under {cat['icon']} {cat_name}")
-        st.rerun()
+            # Check thresholds and fire alerts
+            updated_spending = get_spending_by_category()
+            alerts = check_alert_thresholds(updated_spending)
+            for a in alerts:
+                if a["category_id"] == cat["id"]:
+                    msg = (
+                        f"You've spent {fmt(a['spent'])} of your {fmt(a['limit'])} "
+                        f"{a['category_name']} budget ({a['pct']:.0f}%)."
+                        + (" **Over budget!**" if a["over"] else " Getting close.")
+                    )
+                    create_alert(a["category_id"], msg)
+
+            st.success(f"✓ Logged {fmt(amount)} under {cat['icon']} {cat_name}")
+            st.rerun()
 
     st.divider()
 
-    # ── Recent transactions ──────────────────────────────────
+    # ── Recent transactions ───────────────────────────────────────
     st.markdown("### 🧾 Recent transactions")
     expenses = get_expenses_this_month()
     if not expenses:

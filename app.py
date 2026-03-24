@@ -54,13 +54,13 @@ if st.session_state.get("onboarding_complete"):
 page = st.session_state["page"]
 
 if page == "onboarding":
-    from pages.onboarding import render
+    from views.onboarding import render
     render()
 
 elif page == "dashboard":
-    from pages.dashboard import render
+    from views.dashboard import render
     render()
 
 elif page == "alerts":
-    from pages.alerts import render
+    from views.alerts import render
     render()
