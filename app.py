@@ -26,29 +26,35 @@ authenticator = stauth.Authenticate(
     config["cookie"]["expiry_days"],
 )
 
-# ── Login screen ─────────────────────────────────────────────
-name, authentication_status, username = authenticator.login(
-    location="main",
-    fields={
-        "Form name": "💰 BudgetIQ — Sign in",
-        "Username": "Username",
-        "Password": "Password",
-        "Login": "Sign in",
-    }
-)
+# ── Login ─────────────────────────────────────────────────────
+try:
+    # Newer API (0.3.x+): returns nothing, reads from session state
+    authenticator.login()
+    authentication_status = st.session_state.get("authentication_status")
+    username = st.session_state.get("username")
+    name = st.session_state.get("name")
+except TypeError:
+    # Older API: returns tuple
+    result = authenticator.login("Login", "main")
+    if isinstance(result, tuple):
+        name, authentication_status, username = result
+    else:
+        authentication_status = st.session_state.get("authentication_status")
+        username = st.session_state.get("username")
+        name = st.session_state.get("name")
 
 if authentication_status is False:
     st.error("Incorrect username or password.")
     st.stop()
 
 if authentication_status is None:
-    st.info("Enter your credentials to continue.")
+    st.markdown("## 💰 BudgetIQ")
+    st.info("Enter your credentials above to continue.")
     st.stop()
 
-# ── Authenticated ────────────────────────────────────────────
-user_id = username  # use username as the unique user key
+# ── Authenticated ─────────────────────────────────────────────
+user_id = username
 
-# Cache profile in session state to avoid repeated DB reads
 if "profile" not in st.session_state or st.session_state.get("profile_user") != user_id:
     st.session_state["profile"] = get_profile(user_id)
     st.session_state["profile_user"] = user_id
@@ -81,12 +87,11 @@ with st.sidebar:
                 st.rerun()
 
         st.divider()
-
         if profile:
             st.caption(f"👤 {profile['name']}")
             st.caption(f"💵 {profile['currency']} {profile['monthly_income']:,.0f}/mo")
-
         st.divider()
+
         if st.button("⚙️ Re-run onboarding", use_container_width=True):
             st.session_state["page"] = "onboarding"
             st.session_state["onboarding_complete"] = False
@@ -94,23 +99,20 @@ with st.sidebar:
             st.rerun()
 
     st.divider()
-    authenticator.logout("Sign out", location="sidebar")
+    authenticator.logout("Sign out", "sidebar")
 
-# ── Page routing ──────────────────────────────────────────────
+# ── Routing ───────────────────────────────────────────────────
 page = st.session_state["page"]
 
 if page == "onboarding":
     from views.onboarding import render
     render(user_id)
-
 elif page == "dashboard":
     from views.dashboard import render
     render(user_id)
-
 elif page == "receipt":
     from views.receipt import render
     render(user_id)
-
 elif page == "alerts":
     from views.alerts import render
     render(user_id)
