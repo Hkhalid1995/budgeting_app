@@ -3,11 +3,11 @@ credentials:
     hamza:
       email: hamza@example.com
       name: Hamza Khalid
-      password: REPLACE_WITH_HASH
+      password: $2b$12$KmAxv9pN9fghkjQ6YgW1c.D6JJovd7HXvDwe035i0mSESHNKOA0yO
     friend:
-      email: friend@example.com
-      name: Friend Name
-      password: REPLACE_WITH_HASH
+      email: ziyad@example.com
+      name: Ziyad Alvi
+      password: $2b$12$QPMMEzk93lIcWpD7uOBTweRpLeSVWpRYRF5lHj6e9d0xbJZdUjrB2
 cookie:
   expiry_days: 30
   key: budgetiq_secret_key_change_this
