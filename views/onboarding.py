@@ -55,7 +55,7 @@ def render():
         if income_str and income > 0:
             st.caption(f"✓ Parsed as: {currency} {income:,.0f}")
         elif income_str:
-            st.warning("Could not parse amount — please enter numbers only (commas are fine).")
+            st.warning("Could not parse — please enter numbers only (commas are fine).")
 
         if st.button("Continue →", type="primary", use_container_width=True):
             if not name:
@@ -123,6 +123,13 @@ def render():
             st.session_state["cats_draft"] = [dict(c) for c in DEFAULT_CATEGORIES]
 
         cats = st.session_state["cats_draft"]
+
+        # Read all amounts directly from session_state widget keys (most up-to-date value)
+        for i in range(len(cats)):
+            key = f"cat_{i}"
+            if key in st.session_state:
+                cats[i]["monthly_limit"] = parse_amount(st.session_state[key])
+
         total_allocated = sum(c["monthly_limit"] for c in cats)
         remaining = income - total_allocated
 
@@ -138,16 +145,20 @@ def render():
         for i, cat in enumerate(cats):
             c1, c2, c3 = st.columns([1, 2, 0.3])
             c1.markdown(f"**{cat['icon']} {cat['name']}**")
-            amt_str = c2.text_input(
-                "Limit", value=str(int(cat["monthly_limit"])) if cat["monthly_limit"] else "",
-                key=f"cat_{i}", label_visibility="collapsed", placeholder="e.g. 20,000"
+            c2.text_input(
+                "Limit",
+                key=f"cat_{i}",
+                label_visibility="collapsed",
+                placeholder="e.g. 20,000"
             )
-            cats[i]["monthly_limit"] = parse_amount(amt_str)
             if c3.button("✕", key=f"del_{i}", help="Remove"):
                 to_delete = i
 
         if to_delete is not None:
             cats.pop(to_delete)
+            # Clean up orphaned session keys
+            for i in range(len(cats), len(cats) + 5):
+                st.session_state.pop(f"cat_{i}", None)
             st.rerun()
 
         st.divider()
@@ -172,6 +183,12 @@ def render():
             st.rerun()
 
         if cc2.button("🚀 Launch my dashboard", type="primary", use_container_width=True):
+            # Final parse from widget keys before saving
+            for i in range(len(cats)):
+                key = f"cat_{i}"
+                if key in st.session_state:
+                    cats[i]["monthly_limit"] = parse_amount(st.session_state[key])
+
             active_cats = [c for c in cats if c["monthly_limit"] > 0]
             if not active_cats:
                 st.error("Set a limit for at least one category.")

@@ -1,0 +1,16 @@
+credentials:
+  usernames:
+    hamza:
+      email: hamza@example.com
+      name: Hamza Khalid
+      password: REPLACE_WITH_HASH
+    friend:
+      email: friend@example.com
+      name: Friend Name
+      password: REPLACE_WITH_HASH
+cookie:
+  expiry_days: 30
+  key: budgetiq_secret_key_change_this
+  name: budgetiq_auth
+preauthorized:
+  emails: []
