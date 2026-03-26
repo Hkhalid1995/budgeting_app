@@ -9,7 +9,7 @@ import bcrypt
 
 users = {
     "hamza":  "changeme123",   # <-- change these
-    "friend": "changeme456",   # <-- change these
+    "ziyad": "changeme456",   # <-- change these
 }
 
 print("Paste these into auth_config.yaml under credentials > usernames > <user> > password:\n")
