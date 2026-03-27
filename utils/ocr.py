@@ -1,51 +1,30 @@
 import re
-import json
-import streamlit as st
-
-
-def _vision_client():
-    from google.cloud import vision
-    from google.oauth2 import service_account
-
-    raw = st.secrets["GOOGLE_VISION_CREDENTIALS"]
-
-    # Handle both string and dict (Streamlit sometimes parses TOML into dict)
-    if isinstance(raw, str):
-        creds_dict = json.loads(raw)
-    else:
-        creds_dict = dict(raw)
-
-    # Fix escaped newlines in private key — common issue when pasting into Streamlit secrets
-    if "private_key" in creds_dict:
-        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-
-    credentials = service_account.Credentials.from_service_account_info(creds_dict)
-    return vision.ImageAnnotatorClient(credentials=credentials)
+import io
 
 
 def extract_receipt_data(image_bytes: bytes) -> dict:
+    """
+    Extract receipt data using Tesseract OCR (free, no API needed).
+    Returns dict with: raw_text, amount, merchant, error
+    """
     try:
-        has_vision = "GOOGLE_VISION_CREDENTIALS" in st.secrets
-    except Exception:
-        has_vision = False
+        import pytesseract
+        from PIL import Image
 
-    if not has_vision:
-        return {
-            "raw_text": "", "amount": None, "merchant": None, "confidence": 0,
-            "error": "OCR not configured — add GOOGLE_VISION_CREDENTIALS to Streamlit secrets.",
-        }
+        image = Image.open(io.BytesIO(image_bytes))
 
-    try:
-        from google.cloud import vision
-        client = _vision_client()
-        image = vision.Image(content=image_bytes)
-        response = client.text_detection(image=image)
+        # Convert to RGB if needed (handles HEIC, RGBA, etc.)
+        if image.mode not in ("RGB", "L"):
+            image = image.convert("RGB")
 
-        if response.error.message:
-            return {"raw_text": "", "amount": None, "merchant": None, "confidence": 0,
-                    "error": response.error.message}
+        # Upscale small images for better OCR accuracy
+        w, h = image.size
+        if w < 1000:
+            scale = 1000 / w
+            image = image.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
 
-        raw_text = response.text_annotations[0].description if response.text_annotations else ""
+        raw_text = pytesseract.image_to_string(image, lang="eng")
+
         amount = _parse_amount(raw_text)
         merchant = _parse_merchant(raw_text)
 
@@ -57,17 +36,26 @@ def extract_receipt_data(image_bytes: bytes) -> dict:
             "error": None,
         }
 
+    except ImportError:
+        return {
+            "raw_text": "", "amount": None, "merchant": None, "confidence": 0,
+            "error": "pytesseract not installed. Add to requirements.txt.",
+        }
     except Exception as e:
-        return {"raw_text": "", "amount": None, "merchant": None, "confidence": 0,
-                "error": str(e)}
+        return {
+            "raw_text": "", "amount": None, "merchant": None, "confidence": 0,
+            "error": str(e),
+        }
 
 
 def _parse_amount(text: str) -> float | None:
     lines = text.lower().split("\n")
-    priority_patterns = ["total", "grand total", "amount due", "payable", "net amount", "bill amount"]
+    priority_keywords = ["total", "grand total", "amount due", "payable",
+                         "net amount", "bill amount", "subtotal"]
     amount_re = re.compile(r"[\d,]+(?:\.\d{1,2})?")
 
-    for keyword in priority_patterns:
+    # First pass — priority lines
+    for keyword in priority_keywords:
         for line in lines:
             if keyword in line:
                 nums = amount_re.findall(line.replace(" ", ""))
@@ -76,6 +64,7 @@ def _parse_amount(text: str) -> float | None:
                     if val and val > 0:
                         return val
 
+    # Second pass — largest number on receipt
     all_amounts = []
     for line in lines:
         nums = amount_re.findall(line.replace(" ", ""))
@@ -97,6 +86,6 @@ def _clean_num(s: str) -> float | None:
 def _parse_merchant(text: str) -> str | None:
     lines = [l.strip() for l in text.split("\n") if l.strip()]
     for line in lines[:5]:
-        if len(line) > 3 and not re.match(r"^[\d\s\-\/]+$", line):
+        if len(line) > 3 and not re.match(r"^[\d\s\-\/\.\:]+$", line):
             return line[:50]
     return None
