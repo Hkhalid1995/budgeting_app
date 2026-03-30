@@ -290,3 +290,13 @@ def get_expense_by_id(expense_id, user_id):
     ).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def update_label(label_id, user_id, name, color):
+    conn = get_conn()
+    conn.execute(
+        "UPDATE labels SET name=?, color=? WHERE id=? AND user_id=?",
+        (name, color, label_id, user_id),
+    )
+    conn.commit()
+    conn.close()
