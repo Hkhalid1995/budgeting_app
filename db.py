@@ -53,9 +53,36 @@ def init_db():
             date TEXT,
             flagged INTEGER DEFAULT 0,
             receipt_text TEXT,
+            payment_method TEXT DEFAULT 'cash',
+            location TEXT,
+            warranty_months INTEGER DEFAULT 0,
+            payment_status TEXT DEFAULT 'cleared',
+            receipt_image BLOB,
+            label_ids TEXT DEFAULT '',
             FOREIGN KEY (category_id) REFERENCES budget_categories(id)
         )
     """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS labels (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            color TEXT DEFAULT '#888'
+        )
+    """)
+    # Migrate existing expenses table — add new columns if not present
+    existing_cols = {row[1] for row in c.execute("PRAGMA table_info(expenses)").fetchall()}
+    migrations = [
+        ("payment_method",  "TEXT DEFAULT 'cash'"),
+        ("location",        "TEXT"),
+        ("warranty_months", "INTEGER DEFAULT 0"),
+        ("payment_status",  "TEXT DEFAULT 'cleared'"),
+        ("receipt_image",   "BLOB"),
+        ("label_ids",       "TEXT DEFAULT ''"),
+    ]
+    for col, typedef in migrations:
+        if col not in existing_cols:
+            c.execute(f"ALTER TABLE expenses ADD COLUMN {col} {typedef}")
     c.execute("""
         CREATE TABLE IF NOT EXISTS alerts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -129,11 +156,34 @@ def get_categories(user_id):
     return [dict(r) for r in rows]
 
 
-def add_expense(user_id, category_id, amount, note="", flagged=False, receipt_text=""):
+def add_expense(user_id, category_id, amount, note="", flagged=False, receipt_text="",
+                payment_method="cash", location="", warranty_months=0,
+                payment_status="cleared", receipt_image=None, label_ids=""):
     conn = get_conn()
     conn.execute(
-        "INSERT INTO expenses (user_id, category_id, amount, note, date, flagged, receipt_text) VALUES (?,?,?,?,?,?,?)",
-        (user_id, category_id, amount, note, datetime.now().isoformat(), int(flagged), receipt_text),
+        """INSERT INTO expenses
+           (user_id, category_id, amount, note, date, flagged, receipt_text,
+            payment_method, location, warranty_months, payment_status, receipt_image, label_ids)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (user_id, category_id, amount, note, datetime.now().isoformat(), int(flagged),
+         receipt_text, payment_method, location or "", warranty_months or 0,
+         payment_status, receipt_image, label_ids or ""),
+    )
+    conn.commit()
+    conn.close()
+
+
+def update_expense(expense_id, user_id, category_id, amount, note="",
+                   payment_method="cash", location="", warranty_months=0,
+                   payment_status="cleared", receipt_image=None, label_ids=""):
+    conn = get_conn()
+    conn.execute(
+        """UPDATE expenses SET
+           category_id=?, amount=?, note=?, payment_method=?, location=?,
+           warranty_months=?, payment_status=?, receipt_image=?, label_ids=?
+           WHERE id=? AND user_id=?""",
+        (category_id, amount, note, payment_method, location or "", warranty_months or 0,
+         payment_status, receipt_image, label_ids or "", expense_id, user_id),
     )
     conn.commit()
     conn.close()
@@ -206,3 +256,37 @@ def dismiss_alert(alert_id, user_id):
     conn.execute("UPDATE alerts SET dismissed=1 WHERE id=? AND user_id=?", (alert_id, user_id))
     conn.commit()
     conn.close()
+
+
+def get_labels(user_id):
+    conn = get_conn()
+    rows = conn.execute("SELECT * FROM labels WHERE user_id=? ORDER BY name", (user_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def add_label(user_id, name, color="#888"):
+    conn = get_conn()
+    conn.execute("INSERT INTO labels (user_id, name, color) VALUES (?,?,?)", (user_id, name, color))
+    conn.commit()
+    conn.close()
+
+
+def delete_label(label_id, user_id):
+    conn = get_conn()
+    conn.execute("DELETE FROM labels WHERE id=? AND user_id=?", (label_id, user_id))
+    conn.commit()
+    conn.close()
+
+
+def get_expense_by_id(expense_id, user_id):
+    conn = get_conn()
+    row = conn.execute(
+        """SELECT e.*, b.name as category_name, b.monthly_limit, b.icon
+           FROM expenses e
+           JOIN budget_categories b ON e.category_id=b.id
+           WHERE e.id=? AND e.user_id=?""",
+        (expense_id, user_id),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None

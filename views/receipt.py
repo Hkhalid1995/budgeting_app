@@ -1,5 +1,5 @@
 import streamlit as st
-from db import add_expense, get_categories, get_spending_by_category, create_alert
+from db import add_expense, get_categories, get_spending_by_category, create_alert, get_labels, add_label
 from utils.ocr import extract_receipt_data
 from utils.calculations import check_alert_thresholds, format_currency
 
@@ -61,30 +61,39 @@ def render(user_id: str):
         st.markdown("### Confirm expense details")
         st.caption("Review what we found and adjust if needed.")
 
-        # Pre-fill from OCR, let user correct
         merchant = result.get("merchant") or ""
         ocr_amount = result.get("amount")
-
         detected_amount_str = f"{ocr_amount:,.0f}" if ocr_amount else ""
         if ocr_amount:
             st.success(f"✓ Detected amount: **{fmt(ocr_amount)}**")
 
-        amount_input = st.text_input(
-            "Amount",
-            value=detected_amount_str,
-            placeholder="e.g. 1,250",
-            key="receipt_amount"
-        )
+        amount_input = st.text_input("Amount", value=detected_amount_str,
+                                     placeholder="e.g. 1,250", key="receipt_amount")
         amount = parse_amount(amount_input)
-
-        note_input = st.text_input(
-            "Note / merchant",
-            value=merchant,
-            placeholder="e.g. Lunch at Hardees",
-            key="receipt_note"
-        )
-
+        note_input = st.text_input("Note / merchant", value=merchant,
+                                   placeholder="e.g. Lunch at Hardees", key="receipt_note")
         cat_name = st.selectbox("Category", list(cat_map.keys()), key="receipt_cat")
+
+        # Extra fields
+        PAYMENT_METHODS = ["Cash", "Credit card", "Debit card", "Bank transfer", "Other"]
+        PAYMENT_STATUSES = ["Cleared", "Uncleared", "Pending", "Void"]
+        with st.expander("More details"):
+            rc1, rc2 = st.columns(2)
+            payment_method = rc1.selectbox("Payment method", PAYMENT_METHODS, key="r_method")
+            payment_status = rc2.selectbox("Payment status", PAYMENT_STATUSES, key="r_status")
+            location = st.text_input("Location", value=merchant,
+                                     placeholder="e.g. Carrefour, Gulberg", key="r_location")
+            warranty_months = st.number_input("Warranty (months, 0 = none)",
+                                              min_value=0, max_value=120, value=0, key="r_warranty")
+            labels = get_labels(user_id)
+            selected_labels = []
+            if labels:
+                st.markdown("**Labels**")
+                lcols = st.columns(min(4, len(labels)))
+                for i, lbl in enumerate(labels):
+                    with lcols[i % len(lcols)]:
+                        if st.checkbox(lbl["name"], key=f"r_lbl_{lbl['id']}"):
+                            selected_labels.append(str(lbl["id"]))
 
         if amount > 0:
             st.info(f"Ready to log: **{fmt(amount)}** under {cat_map[cat_name]['icon']} {cat_name}")
@@ -98,10 +107,15 @@ def render(user_id: str):
                     user_id, cat["id"], amount,
                     note=note_input,
                     flagged=False,
-                    receipt_text=result.get("raw_text", "")
+                    receipt_text=result.get("raw_text", ""),
+                    payment_method=payment_method,
+                    location=location,
+                    warranty_months=int(warranty_months),
+                    payment_status=payment_status,
+                    receipt_image=image_bytes,
+                    label_ids=",".join(selected_labels),
                 )
 
-                # Check alert thresholds
                 updated = get_spending_by_category(user_id)
                 alert_fired = False
                 for a in check_alert_thresholds(updated):
@@ -117,11 +131,9 @@ def render(user_id: str):
                             st.toast(f"🔴 Over budget on {cat['icon']} {cat_name}!", icon="⚠️")
                         else:
                             st.toast(f"🟠 {cat['icon']} {cat_name} at {a['pct']:.0f}% of budget", icon="⚠️")
-
                 if not alert_fired:
                     st.toast(f"✅ {fmt(amount)} logged under {cat['icon']} {cat_name}", icon="📸")
 
-                # Clear uploader by resetting key
                 st.session_state.pop("receipt_amount", None)
                 st.session_state.pop("receipt_note", None)
                 st.rerun()
