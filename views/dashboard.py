@@ -108,13 +108,20 @@ def render(user_id: str):
             cat = cat_map[cat_name]
             add_expense(user_id, cat["id"], amount, note)
             updated = get_spending_by_category(user_id)
+            alert_fired = False
             for a in check_alert_thresholds(updated):
                 if a["category_id"] == cat["id"]:
                     msg = (f"Spent {fmt(a['spent'])} of {fmt(a['limit'])} "
                            f"on {a['category_name']} ({a['pct']:.0f}%)."
                            + (" Over budget!" if a["over"] else " Getting close."))
                     create_alert(user_id, a["category_id"], msg)
-            st.success(f"✓ Logged {fmt(amount)} under {cat['icon']} {cat_name}")
+                    alert_fired = True
+                    if a["over"]:
+                        st.toast(f"🔴 Over budget on {cat['icon']} {cat_name}!", icon="⚠️")
+                    else:
+                        st.toast(f"🟠 {cat['icon']} {cat_name} at {a['pct']:.0f}% of budget", icon="⚠️")
+            if not alert_fired:
+                st.toast(f"✅ {fmt(amount)} logged under {cat['icon']} {cat_name}", icon="💰")
             st.rerun()
 
     st.divider()

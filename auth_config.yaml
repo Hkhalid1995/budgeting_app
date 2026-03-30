@@ -8,6 +8,14 @@ credentials:
       email: ziyad@example.com
       name: Ziyad Alvi
       password: $2b$12$QPMMEzk93lIcWpD7uOBTweRpLeSVWpRYRF5lHj6e9d0xbJZdUjrB2
+    awais:
+      email: awais@example.com
+      name: Awais Khalid
+      password: $2b$12$COXUXSTjxL0ps8SndK7kDOfz8tchm6UcSl5ZTKLL8nyEgkn1bGiEC
+    maliha:
+      email: maliha@example.com
+      name: maliha
+      password: $2b$12$3wrZVFUuZUc2Rg.RaJ5/WOGmeep5dMi0.8zCfbHbCxIvFlbF1z9cK
 cookie:
   expiry_days: 30
   key: budgetiq_secret_key_change_this
