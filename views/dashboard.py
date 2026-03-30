@@ -24,6 +24,8 @@ COLOR_NAME_MAP = {v: k for k, v in LABEL_COLOR_OPTIONS.items()}
 COLOR_NAMES    = list(LABEL_COLOR_OPTIONS.keys())
 
 
+# ── Helpers ───────────────────────────────────────────────────
+
 def parse_amount(val: str) -> float:
     try:
         return float(str(val).replace(",", "").replace(" ", ""))
@@ -55,117 +57,68 @@ def label_pill(lbl: dict) -> str:
             f'font-weight:500">{lbl["name"]}</span>')
 
 
-def color_swatch_row(colors: dict) -> str:
-    """Renders a single-row HTML strip of color swatches for reference."""
-    swatches = "".join(
-        f'<span title="{name}" style="display:inline-block;width:18px;height:18px;'
-        f'background:{hex_val};border-radius:4px;margin-right:4px;'
-        f'border:1px solid {hex_val}cc;vertical-align:middle"></span>'
-        for name, hex_val in colors.items()
+def color_preview_html(hex_val: str, name: str) -> str:
+    """Small swatch square + color name written in that color."""
+    return (
+        f'<div style="display:flex;align-items:center;gap:6px;margin-top:-6px;margin-bottom:6px">'
+        f'<span style="display:inline-block;width:14px;height:14px;background:{hex_val};'
+        f'border-radius:3px;border:1px solid {hex_val}99"></span>'
+        f'<span style="font-size:12px;color:{hex_val};font-weight:600">{name}</span>'
+        f'</div>'
     )
-    return f'<div style="line-height:2;margin-bottom:4px">{swatches}</div>'
 
 
-def color_selectbox(key: str, current_color: str = None) -> str:
+# ── Label multiselect ─────────────────────────────────────────
+
+def label_multiselect(key_prefix: str, labels: list, current_ids: list) -> list:
     """
-    Renders a color selectbox where each option shows a colored square swatch.
-    Returns the selected hex color value.
-    Uses st.markdown for a visual swatch strip + selectbox synced together.
+    Plain multiselect — options are label names, returns list of selected id strings.
+    No external helper functions, no COLOR_EMOJI, nothing undefined.
     """
-    current_name = COLOR_NAME_MAP.get(current_color, COLOR_NAMES[0])
-    idx = COLOR_NAMES.index(current_name) if current_name in COLOR_NAMES else 0
+    if not labels:
+        return []
 
-    selected_name = st.selectbox(
-        "Color",
-        COLOR_NAMES,
-        index=idx,
-        key=key,
-        label_visibility="collapsed",
-        format_func=lambda n: n,  # plain name — no bullet
+    name_to_id  = {l["name"]: str(l["id"]) for l in labels}
+    id_to_name  = {str(l["id"]): l["name"] for l in labels}
+    default_names = [id_to_name[i] for i in current_ids if i in id_to_name]
+
+    selected_names = st.multiselect(
+        "Labels",
+        options=list(name_to_id.keys()),
+        default=default_names,
+        key=f"{key_prefix}_labels_ms",
+        placeholder="Assign labels...",
     )
-    hex_val = LABEL_COLOR_OPTIONS[selected_name]
-
-    # Show a live swatch of the selected color below the dropdown
-    st.markdown(
-        f'<div style="display:flex;align-items:center;gap:8px;margin-top:-8px;margin-bottom:6px">'
-        f'<span style="display:inline-block;width:20px;height:20px;background:{hex_val};'
-        f'border-radius:4px;border:1px solid {hex_val}cc"></span>'
-        f'<span style="font-size:12px;color:{hex_val};font-weight:600">{selected_name}</span>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-    return hex_val
+    return [name_to_id[n] for n in selected_names]
 
 
-def color_swatch_select(key: str, current_color: str = None) -> str:
-    """
-    Click-to-select color grid using radio buttons rendered as swatches.
-    Much better UX than a dropdown for colors.
-    """
-    current_name = COLOR_NAME_MAP.get(current_color, COLOR_NAMES[0])
+# ── Inline label creator (inside expense form) ────────────────
 
-    # Build HTML swatch strip for visual reference
-    st.markdown(color_swatch_row(LABEL_COLOR_OPTIONS), unsafe_allow_html=True)
-
-    selected_name = st.radio(
-        "Pick a color",
-        COLOR_NAMES,
-        index=COLOR_NAMES.index(current_name),
-        key=key,
-        horizontal=True,
-        label_visibility="collapsed",
-        format_func=lambda n: "",   # hide text — swatches above are the guide
-    )
-    # This approach doesn't work well because radio button labels can't be hidden cleanly.
-    # Fall back to the selectbox with live swatch approach.
-    return LABEL_COLOR_OPTIONS[selected_name]
-
-
-def inline_label_creator(key_prefix: str, user_id: str) -> bool:
-    """
-    Mini label creation form inside the expense form expander.
-    Returns True if a new label was just created (triggers rerun).
-    """
-    with st.expander("＋ Create a new label", expanded=False):
+def inline_label_creator(key_prefix: str, user_id: str):
+    """Collapsible mini-form to create a label without leaving the expense form."""
+    with st.expander("＋ Create a new label"):
         nc1, nc2 = st.columns([3, 2])
         new_name = nc1.text_input(
-            "Label name",
-            placeholder="e.g. Business, Tax, Family",
-            key=f"{key_prefix}_inline_lbl_name",
-            label_visibility="collapsed",
+            "Name", placeholder="e.g. Business, Tax, Family",
+            key=f"{key_prefix}_ilc_name", label_visibility="collapsed",
         )
-
-        # Color selector with visual swatch
-        selected_color_name = nc2.selectbox(
-            "Color",
-            COLOR_NAMES,
-            key=f"{key_prefix}_inline_lbl_color",
-            label_visibility="collapsed",
+        chosen_color_name = nc2.selectbox(
+            "Color", COLOR_NAMES,
+            key=f"{key_prefix}_ilc_color", label_visibility="collapsed",
         )
-        hex_val = LABEL_COLOR_OPTIONS[selected_color_name]
+        chosen_hex = LABEL_COLOR_OPTIONS[chosen_color_name]
 
-        # Live preview of what the label pill will look like
+        # Color swatch preview
+        nc2.markdown(color_preview_html(chosen_hex, chosen_color_name), unsafe_allow_html=True)
+
+        # Live pill preview
         if new_name.strip():
-            preview_lbl = {"name": new_name.strip(), "color": hex_val}
             st.markdown(
-                f'Preview: &nbsp;{label_pill(preview_lbl)}',
+                f'Preview: &nbsp;{label_pill({"name": new_name.strip(), "color": chosen_hex})}',
                 unsafe_allow_html=True,
             )
 
-        # Color swatch strip
-        st.markdown(color_swatch_row(LABEL_COLOR_OPTIONS), unsafe_allow_html=True)
-
-        # Show selected color swatch
-        st.markdown(
-            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
-            f'<span style="display:inline-block;width:16px;height:16px;background:{hex_val};'
-            f'border-radius:3px;border:1px solid {hex_val}cc"></span>'
-            f'<span style="font-size:12px;color:{hex_val};font-weight:600">{selected_color_name}</span>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-
-        if st.button("Create label", key=f"{key_prefix}_inline_create_lbl", type="primary"):
+        if st.button("Create label", key=f"{key_prefix}_ilc_btn", type="primary"):
             if not new_name.strip():
                 st.warning("Enter a label name.")
             else:
@@ -173,46 +126,19 @@ def inline_label_creator(key_prefix: str, user_id: str) -> bool:
                 if new_name.strip().lower() in [l["name"].lower() for l in existing]:
                     st.warning(f'"{new_name.strip()}" already exists.')
                 else:
-                    add_label(user_id, new_name.strip(), hex_val)
+                    add_label(user_id, new_name.strip(), chosen_hex)
                     st.toast(f'✅ Label "{new_name.strip()}" created', icon="🏷️")
-                    return True
-    return False
+                    st.rerun()
 
 
-def label_multiselect(key_prefix: str, labels: list, current_ids: list) -> list:
-    """
-    Multiselect for labels. Shows a colored emoji swatch before each label name
-    in the dropdown. Returns list of selected label id strings.
-    """
-    if not labels:
-        st.caption("No labels yet — use 'Create a new label' below.")
-        return []
-
-    # Build display options with color emoji prefix so the dropdown looks visual
-    def label_display(lbl: dict) -> str:
-        color_name = COLOR_NAME_MAP.get(lbl["color"], "Gray")
-        return f"{COLOR_EMOJI.get(color_name, '⬜')} {lbl['name']}"
-
-    display_to_id = {label_display(l): str(l["id"]) for l in labels}
-    id_to_display = {str(l["id"]): label_display(l) for l in labels}
-    default_displays = [id_to_display[i] for i in current_ids if i in id_to_display]
-
-    selected_displays = st.multiselect(
-        "Labels",
-        options=list(display_to_id.keys()),
-        default=default_displays,
-        key=f"{key_prefix}_labels_ms",
-        placeholder="Assign labels...",
-    )
-    return [display_to_id[d] for d in selected_displays]
-
+# ── Expense detail form ───────────────────────────────────────
 
 def expense_detail_form(key_prefix, categories, labels, defaults=None, user_id=""):
     """Full expense form. Returns dict of all field values."""
     d = defaults or {}
-    cat_names  = [c["name"] for c in categories]
+    cat_names   = [c["name"] for c in categories]
     default_cat = d.get("category_name", cat_names[0] if cat_names else "")
-    cat_idx    = cat_names.index(default_cat) if default_cat in cat_names else 0
+    cat_idx     = cat_names.index(default_cat) if default_cat in cat_names else 0
 
     fc1, fc2 = st.columns(2)
     cat_name   = fc1.selectbox("Category", cat_names, index=cat_idx, key=f"{key_prefix}_cat")
@@ -224,9 +150,6 @@ def expense_detail_form(key_prefix, categories, labels, defaults=None, user_id="
     )
     note = st.text_input("Note (optional)", value=d.get("note", ""),
                          placeholder="e.g. Lunch at office", key=f"{key_prefix}_note")
-
-    # Initialise mutable state for warranty inside this form
-    warranty_val = int(d.get("warranty_months") or 0)
 
     with st.expander("More details", expanded=bool(defaults)):
         dc1, dc2 = st.columns(2)
@@ -241,30 +164,30 @@ def expense_detail_form(key_prefix, categories, labels, defaults=None, user_id="
         payment_status = dc2.selectbox("Payment status", PAYMENT_STATUSES,
                                        index=ps_idx, key=f"{key_prefix}_status")
 
-        location = st.text_input("Location / merchant",
-                                 value=d.get("location", ""),
-                                 placeholder="e.g. Carrefour, Gulberg Lahore",
-                                 key=f"{key_prefix}_location")
+        location = st.text_input(
+            "Location / merchant", value=d.get("location", ""),
+            placeholder="e.g. Carrefour, Gulberg Lahore",
+            key=f"{key_prefix}_location",
+        )
 
         wc1, wc2 = st.columns([3, 1])
-        warranty_months = wc1.number_input("Warranty (months, 0 = none)",
-                                            min_value=0, max_value=120,
-                                            value=warranty_val,
-                                            key=f"{key_prefix}_warranty")
+        warranty_months = wc1.number_input(
+            "Warranty (months, 0 = none)", min_value=0, max_value=120,
+            value=int(d.get("warranty_months") or 0), key=f"{key_prefix}_warranty",
+        )
         if warranty_months > 0:
             wc2.markdown(
                 f"<div style='padding-top:28px;font-size:12px'>🛡️ {warranty_months}mo</div>",
                 unsafe_allow_html=True,
             )
 
-        # ── Labels ────────────────────────────────────────────
+        # Labels
         st.markdown("**Labels**")
-        # Refresh labels in case user just created one inline
-        fresh_labels = get_labels(user_id) if user_id else labels
-        current_ids  = [x for x in (d.get("label_ids") or "").split(",") if x.strip()]
+        fresh_labels       = get_labels(user_id) if user_id else labels
+        current_ids        = [x for x in (d.get("label_ids") or "").split(",") if x.strip()]
         selected_label_ids = label_multiselect(key_prefix, fresh_labels, current_ids)
 
-        # Show selected pills live
+        # Live pill preview of selected labels
         if selected_label_ids:
             id_to_label = {str(l["id"]): l for l in fresh_labels}
             pills = " ".join(label_pill(id_to_label[i])
@@ -274,17 +197,13 @@ def expense_detail_form(key_prefix, categories, labels, defaults=None, user_id="
 
         # Inline label creator
         if user_id:
-            created = inline_label_creator(key_prefix, user_id)
-            if created:
-                st.rerun()
+            inline_label_creator(key_prefix, user_id)
 
-        # ── Receipt attachment ────────────────────────────────
+        # Receipt attachment
         st.markdown("**Receipt attachment**")
         uploaded_img = st.file_uploader(
-            "Attach receipt",
-            type=["jpg", "jpeg", "png", "webp"],
-            key=f"{key_prefix}_receipt_img",
-            label_visibility="collapsed",
+            "Attach receipt", type=["jpg", "jpeg", "png", "webp"],
+            key=f"{key_prefix}_receipt_img", label_visibility="collapsed",
         )
         receipt_image = uploaded_img.read() if uploaded_img else d.get("receipt_image")
         if uploaded_img:
@@ -306,78 +225,49 @@ def expense_detail_form(key_prefix, categories, labels, defaults=None, user_id="
     }
 
 
+# ── Label manager (bottom of dashboard) ──────────────────────
+
 def label_manager(user_id: str):
-    """Dedicated section for managing all labels."""
     st.markdown("### 🏷️ Labels")
     labels = get_labels(user_id)
 
     if labels:
         for lbl in labels:
             c1, c2, c3, c4 = st.columns([3, 2, 1, 1])
-
-            # Current pill
             c1.markdown(label_pill(lbl), unsafe_allow_html=True)
 
-            # Color selectbox — plain names, no bullet
-            current_name = COLOR_NAME_MAP.get(lbl["color"], COLOR_NAMES[0])
+            current_name   = COLOR_NAME_MAP.get(lbl["color"], COLOR_NAMES[0])
             new_color_name = c2.selectbox(
-                "Color",
-                COLOR_NAMES,
+                "Color", COLOR_NAMES,
                 index=COLOR_NAMES.index(current_name),
                 key=f"lbl_color_{lbl['id']}",
                 label_visibility="collapsed",
             )
             new_hex = LABEL_COLOR_OPTIONS[new_color_name]
-
-            # Live color swatch next to dropdown
-            c2.markdown(
-                f'<div style="display:flex;align-items:center;gap:6px;margin-top:-10px">'
-                f'<span style="display:inline-block;width:14px;height:14px;background:{new_hex};'
-                f'border-radius:3px;border:1px solid {new_hex}cc"></span>'
-                f'<span style="font-size:11px;color:{new_hex};font-weight:600">{new_color_name}</span>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+            c2.markdown(color_preview_html(new_hex, new_color_name), unsafe_allow_html=True)
 
             if c3.button("Save", key=f"lbl_save_{lbl['id']}"):
                 update_label(lbl["id"], user_id, lbl["name"], new_hex)
                 st.toast(f'✅ "{lbl["name"]}" updated', icon="🏷️")
                 st.rerun()
-
-            if c4.button("✕", key=f"lbl_del_{lbl['id']}", help="Delete label"):
+            if c4.button("✕", key=f"lbl_del_{lbl['id']}", help="Delete"):
                 delete_label(lbl["id"], user_id)
                 st.rerun()
     else:
         st.caption("No labels yet — create your first one below.")
 
-    # ── Create new label ──────────────────────────────────────
     st.markdown("**Create a new label**")
     nc1, nc2 = st.columns([3, 2])
     new_name = nc1.text_input(
-        "Label name",
-        placeholder="e.g. Business, Family, Tax",
-        key="mgr_new_lbl_name",
-        label_visibility="collapsed",
+        "Label name", placeholder="e.g. Business, Family, Tax",
+        key="mgr_new_lbl_name", label_visibility="collapsed",
     )
     chosen_name = nc2.selectbox(
-        "Color",
-        COLOR_NAMES,
-        key="mgr_new_lbl_color",
-        label_visibility="collapsed",
+        "Color", COLOR_NAMES, key="mgr_new_lbl_color", label_visibility="collapsed",
     )
     chosen_hex = LABEL_COLOR_OPTIONS[chosen_name]
+    nc2.markdown(color_preview_html(chosen_hex, chosen_name), unsafe_allow_html=True)
 
-    # Swatch + color name preview
-    nc2.markdown(
-        f'<div style="display:flex;align-items:center;gap:6px;margin-top:-10px">'
-        f'<span style="display:inline-block;width:14px;height:14px;background:{chosen_hex};'
-        f'border-radius:3px;border:1px solid {chosen_hex}cc"></span>'
-        f'<span style="font-size:11px;color:{chosen_hex};font-weight:600">{chosen_name}</span>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-
-    # Live pill preview
     if new_name.strip():
         st.markdown(
             f'Preview: &nbsp;{label_pill({"name": new_name.strip(), "color": chosen_hex})}',
@@ -396,6 +286,8 @@ def label_manager(user_id: str):
                 st.toast(f'✅ Label "{new_name.strip()}" created', icon="🏷️")
                 st.rerun()
 
+
+# ── Main render ───────────────────────────────────────────────
 
 def render(user_id: str):
     st.session_state["_user_id"] = user_id
@@ -416,6 +308,7 @@ def render(user_id: str):
     cat_map    = {c["name"]: c for c in categories}
     label_map  = {str(l["id"]): l for l in labels}
 
+    # Header
     st.markdown(f"## 👋 Hey {profile['name']}")
     st.caption(f"{datetime.now().strftime('%B %Y')} · {currency} overview")
 
@@ -426,6 +319,7 @@ def render(user_id: str):
 
     st.divider()
 
+    # Summary metrics
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Monthly income",   fmt(income))
     m2.metric("Total budgeted",   fmt(plan["total_budgeted"]))
@@ -435,6 +329,8 @@ def render(user_id: str):
     m4.metric("Savings rate",     f"{plan['savings_rate_pct']:.1f}%")
 
     st.divider()
+
+    # Budget vs spending
     st.markdown("### 📊 Budget vs spending")
     for cat in spending:
         limit     = cat["monthly_limit"]
@@ -458,6 +354,8 @@ def render(user_id: str):
                 st.caption(f"{fmt(limit - spent)} left")
 
     st.divider()
+
+    # Goals
     st.markdown("### 🎯 Goals progress")
     if not plan["goal_allocations"]:
         st.info("No goals set yet.")
@@ -474,6 +372,8 @@ def render(user_id: str):
             st.error(f"⚠️ **{fmt(abs(surplus))}/month short** of all goals.")
 
     st.divider()
+
+    # Log an expense
     st.markdown("### ➕ Log an expense")
     if not categories:
         st.info("No categories set up yet.")
@@ -517,11 +417,11 @@ def render(user_id: str):
                 st.rerun()
 
     st.divider()
-    st.markdown("### 🧾 Recent transactions")
-    expenses = get_expenses_this_month(user_id)
 
-    # Refresh label_map in case labels changed
-    label_map = {str(l["id"]): l for l in get_labels(user_id)}
+    # Recent transactions
+    st.markdown("### 🧾 Recent transactions")
+    expenses  = get_expenses_this_month(user_id)
+    label_map = {str(l["id"]): l for l in get_labels(user_id)}   # refresh after any label ops
 
     if not expenses:
         st.caption("No expenses this month yet.")
@@ -529,20 +429,20 @@ def render(user_id: str):
         for e in expenses[:20]:
             row1, row2 = st.columns([5, 2])
             with row1:
-                warranty_tag = f" 🛡️ {e.get('warranty_months', 0)}mo" if e.get("warranty_months") else ""
+                warranty_tag = f" 🛡️ {e.get('warranty_months',0)}mo" if e.get("warranty_months") else ""
                 st.markdown(
                     f"{'🚩 ' if e['flagged'] else ''}{e['icon']} **{e['category_name']}** &nbsp;"
-                    f"{method_icon(e.get('payment_method', 'cash'))} "
+                    f"{method_icon(e.get('payment_method','cash'))} "
                     f"`{(e.get('payment_method') or 'Cash').title()}`"
                     f"{warranty_tag}",
                     unsafe_allow_html=True,
                 )
-                note_text = f" · {e['note']}"       if e.get("note")     else ""
-                loc_text  = f" 📍 {e['location']}"  if e.get("location") else ""
+                note_text = f" · {e['note']}"      if e.get("note")     else ""
+                loc_text  = f" 📍 {e['location']}" if e.get("location") else ""
                 st.markdown(
                     f"<span style='font-size:12px'>"
                     f"{e['date'][:10]}{note_text}{loc_text} &nbsp;"
-                    f"{status_badge(e.get('payment_status', 'cleared'))}"
+                    f"{status_badge(e.get('payment_status','cleared'))}"
                     f"</span>",
                     unsafe_allow_html=True,
                 )
