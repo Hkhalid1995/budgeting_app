@@ -14,7 +14,6 @@ st.set_page_config(
 
 init_db()
 
-# ── Load auth config ─────────────────────────────────────────
 config_path = os.path.join(os.path.dirname(__file__), "auth_config.yaml")
 with open(config_path) as f:
     config = yaml.load(f, Loader=SafeLoader)
@@ -26,22 +25,19 @@ authenticator = stauth.Authenticate(
     config["cookie"]["expiry_days"],
 )
 
-# ── Login ─────────────────────────────────────────────────────
 try:
-    # Newer API (0.3.x+): returns nothing, reads from session state
     authenticator.login()
     authentication_status = st.session_state.get("authentication_status")
     username = st.session_state.get("username")
-    name = st.session_state.get("name")
+    name     = st.session_state.get("name")
 except TypeError:
-    # Older API: returns tuple
     result = authenticator.login("Login", "main")
     if isinstance(result, tuple):
         name, authentication_status, username = result
     else:
         authentication_status = st.session_state.get("authentication_status")
         username = st.session_state.get("username")
-        name = st.session_state.get("name")
+        name     = st.session_state.get("name")
 
 if authentication_status is False:
     st.error("Incorrect username or password.")
@@ -52,7 +48,6 @@ if authentication_status is None:
     st.info("Enter your credentials above to continue.")
     st.stop()
 
-# ── Authenticated ─────────────────────────────────────────────
 user_id = username
 
 if "profile" not in st.session_state or st.session_state.get("profile_user") != user_id:
@@ -74,12 +69,16 @@ with st.sidebar:
     st.divider()
 
     if st.session_state.get("onboarding_complete"):
-        pages = {
-            "dashboard": "📊  Dashboard",
-            "receipt":   "📸  Scan receipt",
-            "alerts":    "🔔  Alerts",
+        # Main nav pages
+        nav_pages = {
+            "dashboard":    "📊  Dashboard",
+            "transactions": "🧾  Transactions",
+            "goals":        "🎯  Goals",
+            "receipt":      "📸  Scan receipt",
+            "alerts":       "🔔  Alerts",
+            "labels":       "🏷️  Labels",
         }
-        for key, label in pages.items():
+        for key, label in nav_pages.items():
             active = st.session_state["page"] == key
             if st.button(label, use_container_width=True,
                          type="primary" if active else "secondary"):
@@ -109,6 +108,18 @@ if page == "onboarding":
     render(user_id)
 elif page == "dashboard":
     from views.dashboard import render
+    render(user_id)
+elif page == "add_expense":
+    from views.add_expense import render
+    render(user_id)
+elif page == "transactions":
+    from views.transactions import render
+    render(user_id)
+elif page == "goals":
+    from views.goals import render
+    render(user_id)
+elif page == "labels":
+    from views.labels import render
     render(user_id)
 elif page == "receipt":
     from views.receipt import render
