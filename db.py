@@ -228,22 +228,46 @@ def delete_expense(expense_id, user_id):
 
 
 def create_alert(user_id, category_id, message):
+    """Insert alert only if no undismissed alert already exists for this category."""
+    conn = get_conn()
+    existing = conn.execute(
+        "SELECT id FROM alerts WHERE user_id=? AND category_id=? AND dismissed=0",
+        (user_id, category_id),
+    ).fetchone()
+    if not existing:
+        conn.execute(
+            "INSERT INTO alerts (user_id, category_id, message, triggered_at) VALUES (?,?,?,?)",
+            (user_id, category_id, message, datetime.now().isoformat()),
+        )
+        conn.commit()
+    conn.close()
+
+
+def dismiss_all_alerts_for_category(user_id, category_id):
+    """Dismiss all active alerts for a category — call before re-checking thresholds."""
     conn = get_conn()
     conn.execute(
-        "INSERT INTO alerts (user_id, category_id, message, triggered_at) VALUES (?,?,?,?)",
-        (user_id, category_id, message, datetime.now().isoformat()),
+        "UPDATE alerts SET dismissed=1 WHERE user_id=? AND category_id=? AND dismissed=0",
+        (user_id, category_id),
     )
     conn.commit()
     conn.close()
 
 
 def get_active_alerts(user_id):
+    """Return one active alert per category — the most recent undismissed one."""
     conn = get_conn()
     rows = conn.execute(
         """SELECT a.*, b.name as category_name, b.icon
            FROM alerts a
            JOIN budget_categories b ON a.category_id=b.id
            WHERE a.user_id=? AND a.dismissed=0
+             AND a.id = (
+               SELECT MAX(a2.id) FROM alerts a2
+               WHERE a2.user_id=a.user_id
+                 AND a2.category_id=a.category_id
+                 AND a2.dismissed=0
+             )
            ORDER BY a.triggered_at DESC""",
         (user_id,),
     ).fetchall()
