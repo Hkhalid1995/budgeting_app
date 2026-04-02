@@ -16,6 +16,14 @@ credentials:
       email: maliha@example.com
       name: maliha
       password: $2b$12$3wrZVFUuZUc2Rg.RaJ5/WOGmeep5dMi0.8zCfbHbCxIvFlbF1z9cK
+    hira:
+      email: hira@example.com
+      name: Hira Aslam
+      password: $2b$12$.pPtk7S42YjHc1oeW55mJ.t8tDAEp3Hb/a32OOatJt4lv0VTl89D6
+    ifrah:
+      email: ifrah@example.com
+      name: Ifrah Khalid
+      password: $2b$12$dB4IlKaJvu93SvI.xtr7Ru2lwEIbqgkVWYqY3EPPVeUyDcz20yXKG
 cookie:
   expiry_days: 30
   key: budgetiq_secret_key_change_this

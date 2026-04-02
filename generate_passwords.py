@@ -12,6 +12,8 @@ users = {
     "ziyad": "changeme456",   # <-- change these
     "awais": "changeme789",  # <-- change these
     "maliha": "changeme901", # <-- change these
+    "ifrah": "changeme901", # <-- change these
+    "hira": "changeme901", # <-- change these
 }
 
 print("Paste these into auth_config.yaml under credentials > usernames > <user> > password:\n")
