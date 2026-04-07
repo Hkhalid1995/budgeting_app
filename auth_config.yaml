@@ -24,6 +24,10 @@ credentials:
       email: ifrah@example.com
       name: Ifrah Khalid
       password: $2b$12$dB4IlKaJvu93SvI.xtr7Ru2lwEIbqgkVWYqY3EPPVeUyDcz20yXKG
+    farrae:
+      email: farrae@example.com
+      name: Mohammad Farrae
+      password: $2b$12$.6M02JTJP6IBds/Krvi49eib4ygsUjv0HNdxSJC4sunpC/6ZIR5Rm
 cookie:
   expiry_days: 30
   key: budgetiq_secret_key_change_this
